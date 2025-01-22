@@ -2,17 +2,88 @@ package clireader_test
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"testing"
 
 	clireader "github.com/adamvduke/cli-reader"
 )
 
-func TestCLIReader_ReadAll(t *testing.T) {
-	inputs := []string{"one", "two", "three\n"}
-	wants := []string{"one\n", "two\n", "three\n"}
-	reader := clireader.New(inputs...)
-	for idx := range inputs {
+type inOutPair struct {
+	in  string
+	out string
+}
+
+type testCase struct {
+	pairs   []inOutPair
+	bufSize int
+}
+
+var pairs = []inOutPair{
+	{
+		in:  "a",
+		out: "a\n",
+	},
+	{
+		in:  "a\n",
+		out: "a\n",
+	},
+	{
+		in:  "ab",
+		out: "ab\n",
+	},
+	{
+		in:  "ab\n",
+		out: "ab\n",
+	},
+	{
+		in:  "abc",
+		out: "abc\n",
+	},
+	{
+		in:  "abc\n",
+		out: "abc\n",
+	},
+	{
+		in:  "abcd",
+		out: "abcd\n",
+	},
+	{
+		in:  "abcd\n",
+		out: "abcd\n",
+	},
+	{
+		in:  "abcde",
+		out: "abcde\n",
+	},
+	{
+		in:  "abcde\n",
+		out: "abcde\n",
+	},
+	{
+		in:  "abcdef",
+		out: "abcdef\n",
+	},
+	{
+		in:  "abcdef\n",
+		out: "abcdef\n",
+	},
+	{
+		in:  "abcdefg",
+		out: "abcdefg\n",
+	},
+	{
+		in:  "abcdefg\n",
+		out: "abcdefg\n",
+	},
+}
+
+func TestReadAll(t *testing.T) {
+	tc := testCase{pairs: pairs}
+	reader := clireader.New(tc.inputs()...)
+	for idx := range tc.inputs() {
 		data, err := io.ReadAll(reader)
 		if err != nil {
 			// io.ReadAll does not consider io.EOF to be a reportable error. It's
@@ -21,7 +92,7 @@ func TestCLIReader_ReadAll(t *testing.T) {
 			t.Errorf("unexpected error from io.ReadAll, error: %v", err)
 		}
 		got := string(data)
-		want := wants[idx]
+		want := tc.outputs()[idx]
 		if got != want {
 			t.Errorf("got: %s, want: %s", got, want)
 		}
@@ -39,31 +110,79 @@ func TestCLIReader_ReadAll(t *testing.T) {
 	}
 }
 
-func TestCLIReader_Read(t *testing.T) {
-	inputs := []string{"one", "two", "three\n"}
-	wants := []string{"one\n", "two\n", "three\n"}
-	reader := clireader.New(inputs...)
-	for idx := range inputs {
-		var err error
-		var data []byte
-		// intentionally use a tiny buffer and read until io.EOF while
-		// appending each result of calling Read
-		for !errors.Is(err, io.EOF) {
-			buf := make([]byte, 2)
-			_, err = reader.Read(buf)
-			data = append(data, buf...)
+const (
+	maxBufSize = 20
+)
+
+func TestRead(t *testing.T) {
+	cases := []testCase{}
+	// generates test cases with varying buffer length and the set of pairs
+	// defined above
+	for i := 1; i <= maxBufSize; i++ {
+		tc := testCase{pairs: pairs, bufSize: i}
+		tc.bufSize = i
+		cases = append(cases, tc)
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.Name(), func(t *testing.T) {
+			reader := clireader.New(tc.inputs()...)
+			for idx := range tc.inputs() {
+				var err error
+				var data []byte
+				var n int
+				// buf might be smaller than the current input, so keep
+				// calling read until io.EOF
+				for !errors.Is(err, io.EOF) {
+					buf := make([]byte, tc.bufSize)
+					n, err = reader.Read(buf)
+					// only append up to n bytes to avoid indices in the buffer
+					// that haven't been written
+					data = append(data, buf[:n]...)
+				}
+				got := string(data)
+				if got != tc.outputs()[idx] {
+					t.Errorf("got: %s, want: %s", got, tc.outputs()[idx])
+				}
+			}
+			// the reader should be exhausted at this point.
+			count, err := reader.Read(make([]byte, tc.bufSize))
+			if count != 0 {
+				t.Errorf("unexpected number of bytes from Read got: %d, want: 0", count)
+			}
+			if !errors.Is(err, io.EOF) {
+				t.Errorf("unexpected error from Read got: %v, want: %v", err, io.EOF)
+			}
+		})
+	}
+}
+
+func (tc testCase) inputs() []string {
+	return collect(tc.pairs, func(e inOutPair) string {
+		return e.in
+	})
+}
+func (tc testCase) outputs() []string {
+	return collect(tc.pairs, func(e inOutPair) string {
+		return e.out
+	})
+}
+
+func (tc testCase) Name() string {
+	inputs := []string{}
+	for _, s := range tc.inputs() {
+		next := strings.ReplaceAll(s, "\n", "")
+		if !slices.Contains(inputs, next) {
+			inputs = append(inputs, next)
 		}
-		got := string(data)
-		if got != wants[idx] {
-			t.Errorf("got: %s, want: %s", got, wants[idx])
-		}
 	}
-	// the reader should be exhausted at this point.
-	count, err := reader.Read(make([]byte, 2))
-	if count != 0 {
-		t.Errorf("unexpected number of bytes from Read got: %d, want: 0", count)
+	return fmt.Sprintf("%s_%d", strings.Join(inputs, "_"), tc.bufSize)
+}
+
+func collect[Slice ~[]T, T any, V any](s Slice, fn func(t T) V) []V {
+	out := make([]V, len(s))
+	for idx, tt := range s {
+		out[idx] = fn(tt)
 	}
-	if !errors.Is(err, io.EOF) {
-		t.Errorf("unexpected error from Read got: %v, want: %v", err, io.EOF)
-	}
+	return out
 }
