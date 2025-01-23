@@ -104,7 +104,8 @@ linters-settings:
         # List of allowed packages.
         allow:
           - $gostd
-          - github.com/adamvduke/cli-reader     
+          - github.com/adamvduke/cli-reader
+          - github.com/adamvduke/go-collect
 
   errcheck:
     # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
@@ -245,3 +246,12 @@ linters-settings:
     # Enforces newlines (or comments) after every multi-line function signature.
     # Default: false
     multi-func: true
+
+issues:
+  # Excluding configuration per-path, per-linter, per-text and per-source
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - gochecknoglobals
+        - varnamelen

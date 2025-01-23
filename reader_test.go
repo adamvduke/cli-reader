@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	clireader "github.com/adamvduke/cli-reader"
+	"github.com/adamvduke/go-collect"
 )
 
 type inOutPair struct {
@@ -158,12 +159,12 @@ func TestRead(t *testing.T) {
 }
 
 func (tc testCase) inputs() []string {
-	return collect(tc.pairs, func(e inOutPair) string {
+	return collect.Apply(tc.pairs, func(e inOutPair) string {
 		return e.in
 	})
 }
 func (tc testCase) outputs() []string {
-	return collect(tc.pairs, func(e inOutPair) string {
+	return collect.Apply(tc.pairs, func(e inOutPair) string {
 		return e.out
 	})
 }
@@ -177,12 +178,4 @@ func (tc testCase) Name() string {
 		}
 	}
 	return fmt.Sprintf("%s_%d", strings.Join(inputs, "_"), tc.bufSize)
-}
-
-func collect[Slice ~[]T, T any, V any](s Slice, fn func(t T) V) []V {
-	out := make([]V, len(s))
-	for idx, tt := range s {
-		out[idx] = fn(tt)
-	}
-	return out
 }

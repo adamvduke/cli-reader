@@ -1,3 +1,5 @@
 module github.com/adamvduke/cli-reader
 
-go 1.23.4
+go 1.23
+
+require github.com/adamvduke/go-collect v0.0.1
